@@ -145,7 +145,6 @@ resource "helm_release" "aws_secrets_provider" {
   ]
 }
 
-
 # --- Secret Provider Class ---
 locals {
   postgres_secret_key = "postgres-password"
@@ -178,7 +177,7 @@ resource "kubernetes_manifest" "secret_provider_class" {
           type       = "Opaque"
           data = [
             {
-              key        = local.postgres_secret_key #"postgres-password"
+              key        = local.postgres_secret_key
               objectName = var.secret_name
             }
           ]
@@ -224,7 +223,6 @@ resource "kubernetes_deployment" "main" {
 
   spec {
     replicas = 1
-
     selector {
       match_labels = {
         name = var.project_name
@@ -285,8 +283,6 @@ resource "kubernetes_deployment" "main" {
       }
     }
   }
-
-  depends_on = [helm_release.postgres]
 }
 
 # --- Service ---
@@ -405,13 +401,41 @@ resource "helm_release" "postgres" {
         }
       }
 
+      serviceAccount = {
+        create = false
+        name   = kubernetes_service_account.workload_identity.metadata[0].name
+      }
+
       auth = {
         username       = var.postgres_user
         database       = var.database_name
         existingSecret = var.secret_name
-
+        # Use same password for all postgres user
         secretKeys = {
-          userPasswordKey = local.postgres_secret_key
+          adminPasswordKey       = local.postgres_secret_key
+          userPasswordKey        = local.postgres_secret_key
+          replicationPasswordKey = local.postgres_secret_key
+        }
+      }
+
+      architecture = "replication"
+
+      readReplicas = {
+        replicaCount = 2
+        persistence = {
+          enabled      = true
+          size         = "20Gi"
+          storageClass = "gp3"
+        }
+        resources = {
+          requests = {
+            cpu    = "250m"
+            memory = "512Mi"
+          }
+          limits = {
+            cpu    = "1"
+            memory = "1Gi"
+          }
         }
       }
 
@@ -432,64 +456,37 @@ resource "helm_release" "postgres" {
             memory = "1Gi"
           }
         }
+
+        extraVolumes = [
+          {
+            name = "secrets-store-inline"
+            csi = {
+              driver   = "secrets-store.csi.k8s.io"
+              readOnly = true
+              volumeAttributes = {
+                secretProviderClass = kubernetes_manifest.secret_provider_class.manifest.metadata.name
+              }
+            }
+          }
+        ]
+
+        extraVolumeMounts = [
+          {
+            name      = "secrets-store-inline"
+            mountPath = "/mnt/secrets-store"
+            readOnly  = true
+          }
+        ]
       }
 
       metrics = {
-        enabled = false # true
+        enabled = true
       }
     })
   ]
 
   depends_on = [
-    helm_release.aws_secrets_provider,
-    kubernetes_manifest.secret_provider_class,
-    kubernetes_storage_class_v1.gp3
+    kubernetes_storage_class_v1.gp3,
+    kubernetes_manifest.secret_provider_class
   ]
 }
-
-# --- Redis Helm Release
-# resource "helm_release" "redis" {
-#   name       = "redis"
-#   repository = "oci://registry-1.docker.io/bitnamicharts"
-#   chart      = "redis"
-#   version    = "19.5.1"
-
-#   namespace = kubernetes_namespace.main.metadata[0].name
-
-#   values = [
-#     yamlencode({
-#       architecture = "standalone"
-
-#       auth = {
-#         enabled        = true
-#         existingSecret = var.redis_secret_name
-#         existingSecretPasswordKey = "redis-password"
-#       }
-
-#       master = {
-#         persistence = {
-#           enabled      = true
-#           size         = "8Gi"
-#           storageClass = "gp3"
-#         }
-#       }
-
-#       resources = {
-#         requests = {
-#           cpu    = "100m"
-#           memory = "256Mi"
-#         }
-#         limits = {
-#           cpu    = "500m"
-#           memory = "512Mi"
-#         }
-#       }
-#     })
-#   ]
-
-#   depends_on = [
-#     helm_release.aws_secrets_provider,
-#     kubernetes_manifest.secret_provider_class
-#   ]
-# }
-

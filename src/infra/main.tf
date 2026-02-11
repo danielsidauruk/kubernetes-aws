@@ -41,5 +41,8 @@ module "kubernetes" {
   postgres_user         = var.postgres_user
   database_name         = var.database_name
 
-  depends_on = [module.eks]
+  depends_on = [
+    module.eks,
+    module.secret,
+  ]
 }

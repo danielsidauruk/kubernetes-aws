@@ -272,9 +272,9 @@ resource "aws_eks_access_entry" "console_user" {
 # --- EKS Node Group ---
 resource "aws_eks_node_group" "eks_nodes" {
   for_each = {
-    app      = "application"
-    redis    = "redis"
-    postgres = "postgres"
+    app = "application"
+    # redis    = "redis"
+    # postgres = "postgres"
   }
 
   cluster_name    = aws_eks_cluster.eks_cluster.name
@@ -304,9 +304,9 @@ resource "aws_eks_node_group" "eks_nodes" {
 
 resource "aws_launch_template" "eks_nodes" {
   for_each = {
-    app      = 20
-    redis    = 20
-    postgres = 20
+    app = 20
+    # redis    = 20
+    # postgres = 20
   }
 
   name = "eks-template-${each.key}"
