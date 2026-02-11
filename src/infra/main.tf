@@ -29,12 +29,19 @@ module "secret" {
   secret_name = var.secret_name
 }
 
+module "ecr" {
+  source = "./modules/eks/ecr"
+
+  project_name = var.project_name
+}
+
 module "kubernetes" {
   source = "./modules/eks/kubernetes"
 
   workload_identity_arn = module.eks.workload_identity_arn
   namespace             = var.project_name # Use project_name as Namespace
   project_name          = var.project_name
+  image = "100382203628.dkr.ecr.ap-southeast-1.amazonaws.com/ecr-app:283437e"
   kubernetes_group      = var.kubernetes_group
   service_account       = var.service_account
   secret_name           = var.secret_name
@@ -44,5 +51,6 @@ module "kubernetes" {
   depends_on = [
     module.eks,
     module.secret,
+    module.ecr
   ]
 }
