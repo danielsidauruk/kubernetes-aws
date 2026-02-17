@@ -1,0 +1,11 @@
+# Core API
+fastapi==0.129.0
+uvicorn[standard]==0.25.0 
+psycopg2-binary==2.9.11
+
+# Testing
+pytest==8.6.0
+pytest-asyncio==0.27.0
+httpx==0.30.0
+pytest-mock==3.11.1
+coverage==7.5.0
