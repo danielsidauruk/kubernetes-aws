@@ -3,7 +3,7 @@ output "connect_to_eks" {
   value       = "aws eks update-kubeconfig --region ${var.primary_region} --name ${var.cluster_name}"
 }
 
-output "ingress_hostname" {
-  description = "NLB Public Url."
-  value       = module.kubernetes.ingress_hostname
+output "app_ingress" {
+  description = "Application ALB Url."
+  value       = module.kubernetes.app_ingress
 }

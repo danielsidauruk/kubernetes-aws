@@ -17,37 +17,26 @@ terraform {
       version = "~> 2.13.2"
     }
   }
+
+  # Using S3 as the Terraform Backend
+  backend "s3" {
+    bucket = "<bucket_name?"          # S3 bucket to store the state
+    key    = "<tfstate_name.tfstate>" # Path inside the bucket
+    region = "<aws_region>"           # AWS region (e.g., "ap-southeast-1")
+  }
+}
+
+data "aws_eks_cluster" "main" {
+  name = module.eks.cluster_name
+}
+
+data "aws_eks_cluster_auth" "main" {
+  name = module.eks.cluster_name
 }
 
 provider "aws" {
   profile = "default"
   region  = var.primary_region
-}
-
-# For local development
-terraform {
-  backend "local" {
-    path = "terraform.tfstate"
-  }
-}
-
-# # Using S3 as the Terraform Backend (Recommended)
-# terraform {
-#   backend "s3" {
-#     bucket = "<your bucket>"         # S3 bucket to store the state
-#     key    = "eks/terraform.tfstate" # Path inside the bucket
-#     region = "<availability-zone>"   # AWS region (e.g., "us-east-1")
-#   }
-# }
-
-data "aws_eks_cluster" "main" {
-  name       = var.cluster_name
-  depends_on = [module.eks]
-}
-
-data "aws_eks_cluster_auth" "main" {
-  name       = var.cluster_name
-  depends_on = [module.eks]
 }
 
 provider "kubernetes" {

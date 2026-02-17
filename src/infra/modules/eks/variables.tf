@@ -28,6 +28,11 @@ variable "service_account" {
   description = "Kubernetes Service Account (IRSA)."
 }
 
+variable "alb_controller_sa" {
+  type        = string
+  description = "ALB Controller service account name."
+}
+
 variable "kubernetes_group" {
   type        = string
   description = "Kubernetes Group for Console Access."

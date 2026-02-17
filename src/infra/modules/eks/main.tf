@@ -64,7 +64,7 @@ resource "aws_security_group_rule" "eks_nodes" {
 
 # --- EKS Cluster IAM ---
 resource "aws_iam_role" "eks_cluster" {
-  name = "eks-cluster-role"
+  name = "${var.cluster_name}-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -114,17 +114,18 @@ resource "aws_iam_role_policy_attachment" "eks_nodes" {
 }
 
 
-# --- Workload Identity IAM ---
-data "tls_certificate" "workload_identity" {
+# EKS OIDC Provider
+data "tls_certificate" "eks_oidc" {
   url = aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
 }
 
-resource "aws_iam_openid_connect_provider" "workload_identity" {
+resource "aws_iam_openid_connect_provider" "eks_oidc" {
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.workload_identity.certificates[0].sha1_fingerprint]
-  url             = data.tls_certificate.workload_identity.url
+  thumbprint_list = [data.tls_certificate.eks_oidc.certificates[0].sha1_fingerprint]
+  url             = data.tls_certificate.eks_oidc.url
 }
 
+# --- Workload Identity IAM ---
 resource "aws_iam_role" "workload_identity" {
   name = "workload-identity"
 
@@ -135,16 +136,12 @@ resource "aws_iam_role" "workload_identity" {
       Action = "sts:AssumeRoleWithWebIdentity"
 
       Principal = {
-        Federated = aws_iam_openid_connect_provider.workload_identity.arn
+        Federated = aws_iam_openid_connect_provider.eks_oidc.arn
       }
 
       Condition = {
         StringEquals = {
-          "${replace(
-            aws_iam_openid_connect_provider.workload_identity.url,
-            "https://",
-            ""
-          )}:sub" = "system:serviceaccount:${var.namespace}:${var.service_account}"
+          "${local.oidc_provider_host}:sub" = "system:serviceaccount:${var.namespace}:${var.service_account}"
         }
       }
     }]
@@ -174,6 +171,45 @@ resource "aws_iam_role_policy_attachment" "workload_identity" {
   policy_arn = aws_iam_policy.workload_identity.arn
 }
 
+
+# --- AWS Load Balancer Controller IAM ---
+resource "aws_iam_policy" "aws_load_balancer_controller" {
+  name        = "AWSLoadBalancerControllerIAMPolicy"
+  description = "IAM policy for AWS Load Balancer Controller"
+
+  policy = file("${path.module}/files/alb-iam-policy.json")
+}
+
+resource "aws_iam_role" "aws_load_balancer_controller" {
+  name = "AmazonEKSLoadBalancerControllerRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = "sts:AssumeRoleWithWebIdentity"
+
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.eks_oidc.arn
+        }
+
+        Condition = {
+          StringEquals = {
+            "${local.oidc_provider_host}:sub" = "system:serviceaccount:kube-system:${var.alb_controller_sa}"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "alb_controller_attach" {
+  role       = aws_iam_role.aws_load_balancer_controller.name
+  policy_arn = aws_iam_policy.aws_load_balancer_controller.arn
+}
+
+
 # --- EBS CSI Driver IAM ---
 resource "aws_iam_role" "ebs_csi_driver" {
   name = "ebs-csi-driver"
@@ -185,58 +221,27 @@ resource "aws_iam_role" "ebs_csi_driver" {
       Action = "sts:AssumeRoleWithWebIdentity"
 
       Principal = {
-        Federated = aws_iam_openid_connect_provider.workload_identity.arn
+        Federated = aws_iam_openid_connect_provider.eks_oidc.arn
       }
 
       Condition = {
         StringLike = {
-          "${replace(
-            aws_iam_openid_connect_provider.workload_identity.url,
-            "https://",
-            ""
-          )}:sub" = "system:serviceaccount:kube-system:ebs-csi-*"
+          "${local.oidc_provider_host}:sub" = "system:serviceaccount:kube-system:ebs-csi-*"
         }
       }
     }]
   })
 }
 
-resource "aws_iam_policy" "ebs_csi_driver" {
-  name = "ebs-csi-driver"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "ec2:CreateVolume",
-        "ec2:DeleteVolume",
-        "ec2:CreateSnapshot",
-        "ec2:AttachVolume",
-        "ec2:DetachVolume",
-        "ec2:ModifyVolume",
-        "ec2:DescribeAvailabilityZones",
-        "ec2:DescribeInstances",
-        "ec2:DescribeSnapshots",
-        "ec2:DescribeTags",
-        "ec2:CreateTags",
-        "ec2:DeleteTags",
-        "ec2:DescribeVolumes",
-        "ec2:DescribeVolumesModifications"
-      ]
-      Resource = ["*"]
-    }]
-  })
-}
-
 resource "aws_iam_role_policy_attachment" "ebs_csi_driver" {
   role       = aws_iam_role.ebs_csi_driver.name
-  policy_arn = aws_iam_policy.ebs_csi_driver.arn
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
 }
+
 
 # --- EKS Cluster ---
 resource "aws_eks_cluster" "eks_cluster" {
-  name     = "eks-cluster"
+  name     = var.cluster_name
   role_arn = aws_iam_role.eks_cluster.arn
 
   vpc_config {
@@ -255,8 +260,8 @@ resource "aws_eks_cluster" "eks_cluster" {
 }
 
 resource "aws_eks_addon" "ebs_csi" {
-  cluster_name             = aws_eks_cluster.eks_cluster.name
   addon_name               = "aws-ebs-csi-driver"
+  cluster_name             = aws_eks_cluster.eks_cluster.name
   service_account_role_arn = aws_iam_role.ebs_csi_driver.arn
 
   depends_on = [aws_eks_node_group.eks_nodes]
@@ -271,59 +276,36 @@ resource "aws_eks_access_entry" "console_user" {
 
 # --- EKS Node Group ---
 resource "aws_eks_node_group" "eks_nodes" {
-  for_each = {
-    app = "application"
-    # redis    = "redis"
-    # postgres = "postgres"
-  }
-
   cluster_name    = aws_eks_cluster.eks_cluster.name
-  node_group_name = "ng-${each.key}"
+  node_group_name = "eks-nodegroup"
   node_role_arn   = aws_iam_role.eks_nodes.arn
   subnet_ids      = var.private_subnet_ids
-
-  instance_types = ["t3.medium"]
+  instance_types  = ["t3.medium"]
 
   scaling_config {
-    desired_size = 1
-    max_size     = 1
-    min_size     = 1
+    desired_size = 2
+    max_size     = 2
+    min_size     = 2
   }
 
   launch_template {
-    id      = aws_launch_template.eks_nodes[each.key].id
-    version = aws_launch_template.eks_nodes[each.key].latest_version
-  }
-
-  labels = {
-    role = each.value
+    id      = aws_launch_template.eks_nodes.id
+    version = aws_launch_template.eks_nodes.latest_version
   }
 
   depends_on = [aws_iam_role_policy_attachment.eks_nodes]
 }
 
 resource "aws_launch_template" "eks_nodes" {
-  for_each = {
-    app = 20
-    # redis    = 20
-    # postgres = 20
-  }
-
-  name = "eks-template-${each.key}"
+  name = "eks-template"
 
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
-      volume_size = each.value
+      volume_size = "20"
       volume_type = "gp3"
       iops        = 3000
       throughput  = 125
     }
   }
 }
-
-# --- EKS CloudWatch Log Group ---
-# resource "aws_cloudwatch_log_group" "container_cluster" {
-#   name              = "/aws/eks/${var.cluster_name}/cluster"
-#   retention_in_days = 7
-# }

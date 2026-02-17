@@ -16,6 +16,7 @@ locals {
   }
 }
 
+
 # --- VPC & Networking ---
 resource "aws_vpc" "main" {
   cidr_block           = var.cidr_block
@@ -26,6 +27,7 @@ resource "aws_vpc" "main" {
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 }
+
 
 # --- Subnets ---
 resource "aws_subnet" "private" {
@@ -45,6 +47,7 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 }
 
+
 # --- NAT Gateway ---
 resource "aws_eip" "nat" {}
 
@@ -54,6 +57,7 @@ resource "aws_nat_gateway" "nat" {
 
   depends_on = [aws_internet_gateway.main]
 }
+
 
 # --- Route Tables ---
 resource "aws_route_table" "public" {
@@ -72,6 +76,7 @@ resource "aws_route_table" "private" {
   }
 }
 
+
 # --- Route Table Associations ---
 resource "aws_route_table_association" "public" {
   for_each = aws_subnet.public
@@ -86,6 +91,7 @@ resource "aws_route_table_association" "private" {
   subnet_id      = each.value.id
   route_table_id = aws_route_table.private.id
 }
+
 
 # --- VPC Endpoints ---
 resource "aws_security_group" "vpc_endpoint" {
@@ -109,9 +115,31 @@ resource "aws_vpc_security_group_ingress_rule" "eks_cluster" {
   description       = "Allow backend to access Secrets Manager"
 }
 
+
+# --- Secret Manager Endpoint ---
 resource "aws_vpc_endpoint" "secretsmanager" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.primary_region}.secretsmanager"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  security_group_ids  = [aws_security_group.vpc_endpoint.id]
+  subnet_ids          = [for subnet in aws_subnet.private : subnet.id]
+}
+
+
+# --- ECR Endpoint ---
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.primary_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  security_group_ids  = [aws_security_group.vpc_endpoint.id]
+  subnet_ids          = [for subnet in aws_subnet.private : subnet.id]
+}
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.primary_region}.ecr.dkr"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   security_group_ids  = [aws_security_group.vpc_endpoint.id]
