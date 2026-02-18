@@ -18,11 +18,10 @@ terraform {
     }
   }
 
-  # Using S3 as the Terraform Backend
   backend "s3" {
-    bucket = "<bucket_name?"          # S3 bucket to store the state
-    key    = "<tfstate_name.tfstate>" # Path inside the bucket
-    region = "<aws_region>"           # AWS region (e.g., "ap-southeast-1")
+  #   bucket = "<bucket_name?" # S3 bucket to store the state
+  #   key    = "<tfstate_name.tfstate>"  # Path inside the bucket
+  #   region = "<aws_region>"     # AWS region (e.g., "ap-southeast-1")
   }
 }
 
@@ -35,7 +34,6 @@ data "aws_eks_cluster_auth" "main" {
 }
 
 provider "aws" {
-  profile = "default"
   region  = var.primary_region
 }
 

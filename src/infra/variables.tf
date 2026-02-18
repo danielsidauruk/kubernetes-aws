@@ -54,6 +54,7 @@ variable "eks_admin_arn" {
 variable "image" {
   type        = string
   description = "Container Image name."
+  default     = "nginx"
 }
 
 variable "secret_name" {

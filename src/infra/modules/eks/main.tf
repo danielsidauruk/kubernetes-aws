@@ -62,6 +62,7 @@ resource "aws_security_group_rule" "eks_nodes" {
   protocol          = "tcp"
 }
 
+
 # --- EKS Cluster IAM ---
 resource "aws_iam_role" "eks_cluster" {
   name = "${var.cluster_name}-role"
@@ -124,6 +125,7 @@ resource "aws_iam_openid_connect_provider" "eks_oidc" {
   thumbprint_list = [data.tls_certificate.eks_oidc.certificates[0].sha1_fingerprint]
   url             = data.tls_certificate.eks_oidc.url
 }
+
 
 # --- Workload Identity IAM ---
 resource "aws_iam_role" "workload_identity" {
@@ -267,12 +269,16 @@ resource "aws_eks_addon" "ebs_csi" {
   depends_on = [aws_eks_node_group.eks_nodes]
 }
 
+
 resource "aws_eks_access_entry" "console_user" {
+  count = var.eks_admin_arn == "" ? 0 : 1
+
   cluster_name      = aws_eks_cluster.eks_cluster.name
   principal_arn     = var.eks_admin_arn
-  kubernetes_groups = [var.kubernetes_group] # example: ["eks-console-access-group"] 
+  kubernetes_groups = [var.kubernetes_group]
   type              = "STANDARD"
 }
+
 
 # --- EKS Node Group ---
 resource "aws_eks_node_group" "eks_nodes" {

@@ -1,2 +1,5 @@
+# Kubernetes on Amazon EKS
 
-# Kubernetes on Amazon EKS & AWS Managed Services
+<p align="center">
+  <img src="diagram/kubernetes-aws.svg" alt="High-Level Workflow Diagram"/>
+</p>
