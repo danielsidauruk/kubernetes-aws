@@ -3,6 +3,10 @@ name: 'CI/CD Pipeline'
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '.github/**'
+      - 'diagram/**'
+      - 'README.md'
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
@@ -150,7 +154,6 @@ jobs:
         env:
           TF_VAR_primary_region: ${{ env.AWS_REGION }}
           TF_VAR_project_name: ${{ env.PROJECT_NAME }}
-
 
       - name: Terraform Apply (Kubernetes Application)
         run: |
